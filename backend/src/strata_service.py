@@ -1,14 +1,18 @@
 from sqlalchemy import select,delete
 from fastapi import HTTPException
-from .models import Reading,Interpretation,Stratum,SampleInterval
+from .models import Reading,Interpretation,Stratum,SampleInterval,Ruler
 from .common import hole,get,pack,audit
+from .ruler_service import active_for
 
 def queue(s,p,u):
     h=hole(s,p.borehole_id)
     if s.scalar(select(Interpretation.id).where(Interpretation.borehole_id==h.id,Interpretation.state.in_(['queued','confirmed']))):raise HTTPException(409,'本孔已有排队或已确认解释')
     n=len(s.scalars(select(Reading).where(Reading.borehole_id==h.id)).all())
     if n<12:raise HTTPException(409,'至少12个真实物性测点才可选层数')
-    x=Interpretation(borehole_id=h.id,state='queued');s.add(x);s.flush();audit(s,u,'申请GMM层段解释');return pack(x)
+    # 新申请从受理到出结果整孔只用一版：受理时钉住当前标尺，之后发布新版不影响本申请
+    ruler=active_for(s,h.area)
+    x=Interpretation(borehole_id=h.id,state='queued',mode='ruler'if ruler else'gmm',ruler_id=ruler.id if ruler else None)
+    s.add(x);s.flush();audit(s,u,'申请%s层段解释'%('标尺'+ruler.version if ruler else'GMM'));return pack(x)
 def layers(s,id,p,u):
     ref=get(s,Interpretation,id);h=hole(s,ref.borehole_id);x=get(s,Interpretation,id,True)
     if x.state!='ready':raise HTTPException(409,'须算法已就绪且未主管确认才能修订接触面')
@@ -17,6 +21,11 @@ def layers(s,id,p,u):
         if abs(z.start_m-edge)>1e-6 or z.end_m<=z.start_m:raise HTTPException(409,'人工层段须从0连续衔接，不得缺段或重叠')
         edge=z.end_m
     if abs(edge-h.total_depth)>1e-6:raise HTTPException(409,'人工层段必须完整覆盖孔深')
+    if x.mode=='ruler':
+        ruler=get(s,Ruler,x.ruler_id)
+        allowed={t['layer_type']for t in ruler.layer_types}
+        bad=[z.layer_type for z in rows if z.layer_type not in allowed]
+        if bad:raise HTTPException(409,'层型编号必须沿用标尺归类：%s'%('、'.join(sorted(set(bad)))or'编号无效'))
     s.execute(delete(Stratum).where(Stratum.interpretation_id==id))
     for z in rows:s.add(Stratum(interpretation_id=id,**z.model_dump()))
     s.flush();audit(s,u,'人工接触面已编录');return pack(x)

@@ -3,6 +3,7 @@ class Clean(BaseModel):model_config=ConfigDict(str_strip_whitespace=True,allow_i
 class Login(Clean):email:str;password:str
 class HoleInput(Clean):
     code:str=Field(min_length=2,max_length=40)
+    area:str=Field(min_length=2,max_length=120)
     site:str=Field(min_length=2,max_length=120)
     total_depth:float=Field(gt=0,le=1000)
     cut_quota:float=Field(gt=0,le=100)
@@ -29,9 +30,13 @@ class BoreholeRef(Clean):borehole_id:int
 class LayerInput(Clean):
     start_m:float=Field(ge=0)
     end_m:float=Field(gt=0)
+    layer_type:str=Field(default='',max_length=40)
     lithology:str=Field(min_length=2,max_length=100)
     contact_note:str=Field(min_length=8,max_length=600)
 class Layers(Clean):layers:list[LayerInput]=Field(min_length=1,max_length=40)
+class RulerPublish(Clean):
+    interpretation_id:int
+    version:str=Field(min_length=2,max_length=40)
 class SampleInput(Clean):
     borehole_id:int
     stratum_id:int

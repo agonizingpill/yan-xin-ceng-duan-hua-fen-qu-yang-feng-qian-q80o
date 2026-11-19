@@ -3,14 +3,14 @@ from sqlalchemy import select
 from .database import Session
 from .security import current,allow
 from .common import pack,audit,hole
-from .models import Borehole,CoreRun,Reading,MissingInterval,Interpretation,Stratum,SampleInterval,Seal,Custody,ColumnRevision,Audit
-from .schemas import HoleInput,RunInput,ReadingInput,MissingInput,Reason,BoreholeRef,Layers,SampleInput,SealInput,CustodyInput,RevisionInput
-from . import drilling_service as drilling,strata_service as strata,sample_service as sampling,custody_service as custody,revision_service as revision
+from .models import Borehole,CoreRun,Reading,MissingInterval,Interpretation,Stratum,SampleInterval,Seal,Custody,ColumnRevision,Audit,Ruler
+from .schemas import HoleInput,RunInput,ReadingInput,MissingInput,Reason,BoreholeRef,Layers,SampleInput,SealInput,CustodyInput,RevisionInput,RulerPublish
+from . import drilling_service as drilling,strata_service as strata,sample_service as sampling,custody_service as custody,revision_service as revision,ruler_service
 router=APIRouter()
 def permissions(u,controlled=False):allow(u,*(['supervisor']if controlled else['operator','supervisor']))
 @router.get('/register')
 def register(u=Depends(current)):
-    with Session()as s:return {name:[pack(x)for x in s.scalars(select(cls).order_by(cls.id))]for name,cls in [('boreholes',Borehole),('runs',CoreRun),('readings',Reading),('missing',MissingInterval),('interpretations',Interpretation),('strata',Stratum),('samples',SampleInterval),('seals',Seal),('custodies',Custody),('revisions',ColumnRevision)]}
+    with Session()as s:return {name:[pack(x)for x in s.scalars(select(cls).order_by(cls.id))]for name,cls in [('boreholes',Borehole),('runs',CoreRun),('readings',Reading),('missing',MissingInterval),('interpretations',Interpretation),('strata',Stratum),('samples',SampleInterval),('seals',Seal),('custodies',Custody),('revisions',ColumnRevision),('rulers',Ruler)]}
 @router.get('/audit')
 def history(u=Depends(current)):
     with Session()as s:return [pack(x)for x in s.scalars(select(Audit).order_by(Audit.id.desc()).limit(35))]
@@ -65,6 +65,10 @@ def confirm(id:int,u=Depends(current)):
 def withdraw(id:int,u=Depends(current)):
     permissions(u,True)
     with Session.begin()as s:return strata.withdraw(s,id,u)
+@router.post('/rulers')
+def publish_ruler(p:RulerPublish,u=Depends(current)):
+    permissions(u,True)
+    with Session.begin()as s:return ruler_service.publish(s,p,u)
 @router.post('/samples')
 def sample(p:SampleInput,u=Depends(current)):
     permissions(u)

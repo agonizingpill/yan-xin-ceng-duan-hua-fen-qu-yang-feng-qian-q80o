@@ -1,6 +1,6 @@
 from sqlalchemy import select
 from fastapi import HTTPException
-from .models import CoreRun,Reading,MissingInterval,Interpretation,Stratum,SampleInterval,Seal,Custody,ColumnRevision
+from .models import CoreRun,Reading,MissingInterval,Interpretation,Stratum,SampleInterval,Seal,Custody,ColumnRevision,Ruler
 from .common import hole,get,pack,audit
 
 def create(s,p,u):
@@ -27,4 +27,5 @@ def freeze(s,id,u):
     samples=s.scalars(select(SampleInterval).where(SampleInterval.borehole_id==h.id,SampleInterval.state!='cancelled')).all()
     if any(v.state!='transferred'for v in samples):raise HTTPException(409,'尚有未完整封签交接样袋，不能冻结')
     ids=[v.id for v in samples];seals=s.scalars(select(Seal).where(Seal.sample_id.in_(ids))).all()if ids else[];sealids=[v.id for v in seals];cust=s.scalars(select(Custody).where(Custody.seal_id.in_(sealids))).all()if sealids else[]
-    x.snapshot={'borehole':pack(h),'runs':[pack(v)for v in runs],'readings':[pack(v)for v in points],'missing':[pack(v)for v in missing],'interpretation':pack(i),'strata':[pack(v)for v in s.scalars(select(Stratum).where(Stratum.interpretation_id==i.id))],'samples':[pack(v)for v in samples],'seals':[pack(v)for v in seals],'custodies':[pack(v)for v in cust]};x.state='frozen';x.frozen_by=u['email'];h.state='frozen';audit(s,u,'冻结柱状图 '+h.code+' '+x.version);return pack(x)
+    ruler=get(s,Ruler,i.ruler_id)if i.ruler_id else None
+    x.snapshot={'borehole':pack(h),'ruler':pack(ruler)if ruler else None,'runs':[pack(v)for v in runs],'readings':[pack(v)for v in points],'missing':[pack(v)for v in missing],'interpretation':pack(i),'strata':[pack(v)for v in s.scalars(select(Stratum).where(Stratum.interpretation_id==i.id))],'samples':[pack(v)for v in samples],'seals':[pack(v)for v in seals],'custodies':[pack(v)for v in cust]};x.state='frozen';x.frozen_by=u['email'];h.state='frozen';audit(s,u,'冻结柱状图 '+h.code+' '+x.version);return pack(x)

@@ -18,6 +18,7 @@ class Borehole(Base):
     __table_args__=(CheckConstraint('total_depth>0 AND cut_quota>0'),)
     id:Mapped[int]=mapped_column(primary_key=True)
     code:Mapped[str]=mapped_column(String(40),unique=True)
+    area:Mapped[str]=mapped_column(String(120),default='')
     site:Mapped[str]=mapped_column(String(120))
     total_depth:Mapped[float]=mapped_column(Float)
     cut_quota:Mapped[float]=mapped_column(Float)
@@ -50,11 +51,26 @@ class MissingInterval(Base):
     end_m:Mapped[float]=mapped_column(Float)
     reason:Mapped[str]=mapped_column(String(600),default='')
     state:Mapped[str]=mapped_column(String(20),default='observed')
+class Ruler(Base):
+    __tablename__='rulers'
+    __table_args__=(UniqueConstraint('area','version'),)
+    id:Mapped[int]=mapped_column(primary_key=True)
+    area:Mapped[str]=mapped_column(String(120))
+    version:Mapped[str]=mapped_column(String(40))
+    state:Mapped[str]=mapped_column(String(20),default='active')
+    source_interpretation_id:Mapped[int]=mapped_column(ForeignKey('interpretations.id'))
+    source_borehole_code:Mapped[str]=mapped_column(String(40))
+    basis:Mapped[dict]=mapped_column(JSON,default=dict)
+    ranges:Mapped[dict]=mapped_column(JSON,default=dict)
+    layer_types:Mapped[dict]=mapped_column(JSON,default=list)
+    published_by:Mapped[str]=mapped_column(String(120))
 class Interpretation(Base):
     __tablename__='interpretations'
     id:Mapped[int]=mapped_column(primary_key=True)
     borehole_id:Mapped[int]=mapped_column(ForeignKey('boreholes.id'))
     state:Mapped[str]=mapped_column(String(20),default='queued')
+    mode:Mapped[str]=mapped_column(String(20),default='gmm')
+    ruler_id:Mapped[int|None]=mapped_column(ForeignKey('rulers.id'),nullable=True)
     evidence:Mapped[dict]=mapped_column(JSON,default=dict)
     error:Mapped[str]=mapped_column(String(600),default='')
 class Stratum(Base):
@@ -64,6 +80,7 @@ class Stratum(Base):
     interpretation_id:Mapped[int]=mapped_column(ForeignKey('interpretations.id'))
     start_m:Mapped[float]=mapped_column(Float)
     end_m:Mapped[float]=mapped_column(Float)
+    layer_type:Mapped[str]=mapped_column(String(40),default='')
     lithology:Mapped[str]=mapped_column(String(100))
     contact_note:Mapped[str]=mapped_column(String(600))
 class SampleInterval(Base):

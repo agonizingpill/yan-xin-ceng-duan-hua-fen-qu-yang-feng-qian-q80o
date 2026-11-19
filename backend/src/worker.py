@@ -3,9 +3,10 @@ from pathlib import Path
 from redis import Redis
 from sqlalchemy import select
 from .database import Session
-from .models import Interpretation,Reading,Borehole
+from .models import Interpretation,Reading,Borehole,Ruler
 from .common import get,pack
 from .layer_model import fit_layers
+from .ruler_model import classify
 r=Redis.from_url(os.environ['REDIS_URL'],decode_responses=True)
 logging.basicConfig(level=logging.INFO)
 while True:
@@ -18,7 +19,13 @@ while True:
             preview=get(s,Interpretation,id);get(s,Borehole,preview.borehole_id,True);x=get(s,Interpretation,id,True)
             if x.state!='queued':continue
             rows=[pack(z)for z in s.scalars(select(Reading).where(Reading.borehole_id==x.borehole_id).order_by(Reading.depth_m))]
-            x.evidence=fit_layers(rows);x.state='ready';x.error='';logging.info('interpreted %s k=%s',id,x.evidence['chosen_k'])
+            # 整孔只用受理时钉住的一版标尺，即使期间主管发布了新版也不切换
+            if x.mode=='ruler':
+                ruler=get(s,Ruler,x.ruler_id)
+                x.evidence=classify(rows,pack(ruler));logging.info('ruler classified %s ruler=%s pending=%s',id,ruler.version,x.evidence['pending_count'])
+            else:
+                x.evidence=fit_layers(rows);logging.info('interpreted %s k=%s',id,x.evidence['chosen_k'])
+            x.state='ready';x.error=''
     except Exception as e:
         logging.exception('interpretation failed')
         with Session.begin()as s:

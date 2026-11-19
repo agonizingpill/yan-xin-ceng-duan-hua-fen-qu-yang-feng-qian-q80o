@@ -13,9 +13,22 @@ from .middlewares import RequestTrace,Recovery
 from scripts.seed_demo import seed
 logging.basicConfig(level=logging.INFO)
 redis=Redis.from_url(os.environ['REDIS_URL'],decode_responses=True)
+def upgrade_schema():
+    # create_all 只建新表；旧演示库的新列在此幂等补齐，历史数据升级后照常查看
+    from sqlalchemy import inspect,text
+    cols={'boreholes':[('area',"VARCHAR(120) DEFAULT ''")],'interpretations':[('mode',"VARCHAR(20) DEFAULT 'gmm'"),('ruler_id','INTEGER')],'strata':[('layer_type',"VARCHAR(40) DEFAULT ''")]}
+    inspector=inspect(engine)
+    tables=inspector.get_table_names()
+    existing={t:{c['name']for c in inspector.get_columns(t)}for t in cols if t in tables}
+    with engine.begin()as conn:
+        for table,adds in cols.items():
+            for name,ddl in adds:
+                if name not in existing.get(table,set()):conn.execute(text('ALTER TABLE %s ADD COLUMN %s %s'%(table,name,ddl)))
 @asynccontextmanager
 async def lifespan(app):
     Base.metadata.create_all(engine)
+    try:upgrade_schema()
+    except Exception:logging.exception('schema upgrade failed')
     if os.getenv('SEED_DEMO','true')=='true':
         try:seed()
         except Exception:logging.exception('seed failed')
